@@ -1,28 +1,26 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; Copyright (c) 2023 STMicroelectronics.
-  * All rights reserved.</center></h2>
-  *
-  * This software component is licensed by ST under BSD 3-Clause license,
-  * the "License"; You may not use this file except in compliance with the
-  * License. You may obtain a copy of the License at:
-  *                        opensource.org/licenses/BSD-3-Clause
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2023 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +41,34 @@
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+struct PortPin {
+	GPIO_TypeDef *PORT;
+	uint16_t PIN;
+};
+struct PortPin R[4] =
+{
+      { GPIOA, GPIO_PIN_10 }, { GPIOB, GPIO_PIN_3 },
+	  { GPIOB,GPIO_PIN_5 }, { GPIOB, GPIO_PIN_4 }
+};
+
+struct PortPin L[4] =
+{
+		{ GPIOA, GPIO_PIN_9 }, { GPIOC, GPIO_PIN_7 },
+		{ GPIOB,GPIO_PIN_6 }, { GPIOA, GPIO_PIN_7 }
+};
+
+uint16_t current_state = 0;
+uint16_t previous_state = 0;
+uint8_t LED_state = 0;
+uint16_t data_input[11];
+//uint16_t data_input_index = 0;
+uint16_t press_count =0;
+uint8_t truth =1;
+
+
+uint16_t ButtonMatrix = 0;
+uint16_t expected[11] = {512,2,2048,2,4,32,4,4,4,128,2}; //64340500024
+
 
 /* USER CODE END PV */
 
@@ -51,7 +77,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void ReadMatrixButton1Row();
+//void data_memory(uint16_t data_input );
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,12 +121,71 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+	while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+		static uint32_t timestamp = 0;
+		if (HAL_GetTick() >= timestamp) {
+			timestamp = HAL_GetTick() + 100;
+			ReadMatrixButton1Row();
+			current_state = ButtonMatrix;
+
+			if (current_state >= 1 && previous_state == 0) //1 0 rising
+					{
+
+				switch (current_state) {
+
+				case 4096:  //CLR DATA
+				truth = 1;
+				LED_state =0;
+				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, LED_state);
+//				data_input_index = sizeof(data_input) / sizeof(data_input[0]);
+				for (int j = 0; j < press_count;j++)
+				{
+					data_input[j] = 0;
+				}
+				press_count =0;
+//				data_input_index =0;
+				break;
+
+				case 8192: //BS
+					if (press_count > 0){
+						press_count--;
+					}
+
+				break;
+
+				case 16384: //OK
+					if (press_count == 11)
+					{
+						for (int i=0; i<press_count ;i++){
+							if (data_input[i] != expected[i]){
+								truth = 0;
+							}
+
+						}
+						if (truth){
+							LED_state = 1;
+							HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, LED_state);
+
+						}
+					}
+				break;
+
+				default:
+					if ((press_count <11) && (current_state != -32768) && (current_state !=64) && (current_state !=1024)){
+						data_input[press_count] = current_state;
+						press_count++;
+					}
+
+				break;
+			}
+		}
+			previous_state = current_state;
+
+	}
+}
   /* USER CODE END 3 */
 }
 
@@ -132,7 +218,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-
+  /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -245,6 +331,24 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void ReadMatrixButton1Row() {
+	static uint8_t X = 0;
+	register int i;
+	for (i = 0; i < 4; i++) {
+		if (HAL_GPIO_ReadPin(L[i].PORT, L[i].PIN) == 1) {
+			ButtonMatrix &= ~(1 << (X * 4 + i));
+			//  x = 0 , i = 0 -> 0
+		} else {
+			ButtonMatrix |= 1 << (X * 4 + i);
+		}
+	}
+	// SET RX
+	HAL_GPIO_WritePin(R[X].PORT, R[X].PIN, 1);
+	// RESET RX+1%4
+	HAL_GPIO_WritePin(R[(X + 1) % 4].PORT, R[(X + 1) % 4].PIN, 0);
+	X++;
+	X %= 4;
+}
 
 /* USER CODE END 4 */
 
@@ -255,11 +359,10 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
+	/* User can add his own implementation to report the HAL error return state */
+	__disable_irq();
+	while (1) {
+	}
   /* USER CODE END Error_Handler_Debug */
 }
 

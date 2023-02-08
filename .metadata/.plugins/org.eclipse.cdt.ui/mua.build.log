@@ -1,0 +1,10 @@
+23:42:43 **** Incremental Build of configuration Debug for project mua ****
+make -j16 all 
+arm-none-eabi-size   mua.elf 
+   text	   data	    bss	    dec	    hex	filename
+   7220	     20	   1636	   8876	   22ac	mua.elf
+Finished building: default.size.stdout
+ 
+
+23:42:44 Build Finished. 0 errors, 0 warnings. (took 296ms)
+
